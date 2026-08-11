@@ -2,3 +2,5 @@ streamlit
 yfinance
 pandas
 numpy
+requests
+streamlit-aggrid
