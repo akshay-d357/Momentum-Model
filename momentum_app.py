@@ -5,6 +5,7 @@ import numpy as np
 import requests
 from datetime import datetime, timedelta
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+import calendar
 
 # Page configuration
 st.set_page_config(page_title="Market Momentum Strategy Engine", layout="wide")
@@ -170,6 +171,23 @@ if universe_option == "Momentum 30 (Nifty 500)":
 elif universe_option == "Momentum 3M Velocity + Long Buildup (F&O)":
     tickers_to_scan = [f"{sym}.NS" for sym in oi_data.keys()]
     top_n = 30
+    
+    # Calculate current F&O expiry (Last Thursday of the month)
+    today_date = datetime.today().date()
+    def get_last_thursday(year, month):
+        num_days = calendar.monthrange(year, month)[1]
+        last_day = datetime(year, month, num_days).date()
+        offset = (last_day.weekday() - 3) % 7
+        return last_day - timedelta(days=offset)
+        
+    current_expiry = get_last_thursday(today_date.year, today_date.month)
+    if today_date > current_expiry:
+        if today_date.month == 12:
+            current_expiry = get_last_thursday(today_date.year + 1, 1)
+        else:
+            current_expiry = get_last_thursday(today_date.year, today_date.month + 1)
+            
+    st.info(f"📅 **Active F&O Expiry Cycle:** {current_expiry.strftime('%d %b %Y')} *(Standard Last Thursday)*")
 elif universe_option == "Momentum 10 (Nifty 100)":
     tickers_to_scan = ticker_lists["large"]
     top_n = 10
