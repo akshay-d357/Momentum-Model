@@ -13,6 +13,59 @@ st.title("📈 Market Momentum Strategy Engine")
 st.markdown("Automated ranking engine based on pure quantitative momentum and relative velocity.")
 
 # --- Data Fetching Setup ---
+@st.cache_data(ttl=3600)
+def get_official_sector_momentum():
+    index_mapping = {
+        "IT": "^CNXIT",
+        "Bank": "^NSEBANK",
+        "Pharma & Healthcare": "^CNXPHARMA",
+        "Auto": "^CNXAUTO",
+        "FMCG": "^CNXFMCG",
+        "Metal": "^CNXMETAL",
+        "Energy": "^CNXENERGY",
+        "Realty": "^CNXREALTY",
+        "Infra": "^CNXINFRA",
+        "Consumer": "^CNXCONSUM",
+        "PSU Bank": "^CNXPSUBANK",
+        "Media": "^CNXMEDIA",
+        "Financial Services": "^CNXFIN",
+        "Commodities": "^CNXCMDT",
+        "Public Sector (PSE)": "^CNXPSE"
+    }
+    
+    sector_results = []
+    try:
+        index_data = yf.download(list(index_mapping.values()), period="1y", progress=False)
+        for sector_name, symbol in index_mapping.items():
+            if isinstance(index_data.columns, pd.MultiIndex):
+                prices = index_data['Close'][symbol].dropna()
+            else:
+                prices = index_data['Close'].dropna()
+                
+            if len(prices) >= 21:
+                current = prices.iloc[-1]
+                p1m = prices.iloc[-21] if len(prices) >= 21 else prices.iloc[0]
+                p3m = prices.iloc[-63] if len(prices) >= 63 else prices.iloc[0]
+                p6m = prices.iloc[-126] if len(prices) >= 126 else prices.iloc[0]
+                p12m = prices.iloc[-252] if len(prices) >= 252 else prices.iloc[0]
+                
+                sector_results.append({
+                    "Sector": sector_name,
+                    "1-Month Velocity (%)": round(((current - p1m) / p1m) * 100, 2),
+                    "3-Month Velocity (%)": round(((current - p3m) / p3m) * 100, 2),
+                    "6-Month Velocity (%)": round(((current - p6m) / p6m) * 100, 2),
+                    "12-Month Velocity (%)": round(((current - p12m) / p12m) * 100, 2)
+                })
+        df = pd.DataFrame(sector_results)
+        df['1-Month Rank'] = df['1-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
+        df['3-Month Rank'] = df['3-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
+        df['6-Month Rank'] = df['6-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
+        df['12-Month Rank'] = df['12-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
+        df = df[['Sector', '1-Month Rank', '3-Month Rank', '6-Month Rank', '12-Month Rank']]
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
 @st.cache_data(ttl=3600)  # Cache data for 1 hour to avoid slow reloads
 def fetch_data(tickers, period="1y"):
     """Fetch historical data for a list of tickers."""
@@ -76,8 +129,21 @@ else:
 
 st.divider()
 
+st.header("2. Sector-wise Momentum Summary (True Index)")
+st.markdown("Actual market-cap weighted momentum scores using official NSE Sector Indices.")
+
+sector_summary = get_official_sector_momentum()
+
+if not sector_summary.empty:
+    sector_summary = sector_summary.sort_values(by="6-Month Rank", ascending=True).reset_index(drop=True)
+    st.dataframe(sector_summary, use_container_width=True)
+else:
+    st.warning("Could not fetch official sector index data.")
+
+st.divider()
+
 # --- Universe Selection ---
-st.header("2. Candidate Filtering & 3. Brutal Strength Ranking")
+st.header("3. Candidate Filtering & 4. Brutal Strength Ranking")
 st.markdown("Scanning Nifty 500 universe for momentum candidates.")
 
 @st.cache_data(ttl=86400) # Cache for 1 day
@@ -167,59 +233,6 @@ def get_fno_long_buildup():
     except Exception as e:
         st.error(f"Failed to fetch OI data from NSE: {e}")
         return {}
-
-@st.cache_data(ttl=3600)
-def get_official_sector_momentum():
-    index_mapping = {
-        "IT": "^CNXIT",
-        "Bank": "^NSEBANK",
-        "Pharma & Healthcare": "^CNXPHARMA",
-        "Auto": "^CNXAUTO",
-        "FMCG": "^CNXFMCG",
-        "Metal": "^CNXMETAL",
-        "Energy": "^CNXENERGY",
-        "Realty": "^CNXREALTY",
-        "Infra": "^CNXINFRA",
-        "Consumer": "^CNXCONSUM",
-        "PSU Bank": "^CNXPSUBANK",
-        "Media": "^CNXMEDIA",
-        "Financial Services": "^CNXFIN",
-        "Commodities": "^CNXCMDT",
-        "Public Sector (PSE)": "^CNXPSE"
-    }
-    
-    sector_results = []
-    try:
-        index_data = yf.download(list(index_mapping.values()), period="1y", progress=False)
-        for sector_name, symbol in index_mapping.items():
-            if isinstance(index_data.columns, pd.MultiIndex):
-                prices = index_data['Close'][symbol].dropna()
-            else:
-                prices = index_data['Close'].dropna()
-                
-            if len(prices) >= 21:
-                current = prices.iloc[-1]
-                p1m = prices.iloc[-21] if len(prices) >= 21 else prices.iloc[0]
-                p3m = prices.iloc[-63] if len(prices) >= 63 else prices.iloc[0]
-                p6m = prices.iloc[-126] if len(prices) >= 126 else prices.iloc[0]
-                p12m = prices.iloc[-252] if len(prices) >= 252 else prices.iloc[0]
-                
-                sector_results.append({
-                    "Sector": sector_name,
-                    "1-Month Velocity (%)": round(((current - p1m) / p1m) * 100, 2),
-                    "3-Month Velocity (%)": round(((current - p3m) / p3m) * 100, 2),
-                    "6-Month Velocity (%)": round(((current - p6m) / p6m) * 100, 2),
-                    "12-Month Velocity (%)": round(((current - p12m) / p12m) * 100, 2)
-                })
-        df = pd.DataFrame(sector_results)
-        df['1-Month Rank'] = df['1-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
-        df['3-Month Rank'] = df['3-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
-        df['6-Month Rank'] = df['6-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
-        df['12-Month Rank'] = df['12-Month Velocity (%)'].rank(ascending=False, method='min').astype(int)
-        df = df[['Sector', '1-Month Rank', '3-Month Rank', '6-Month Rank', '12-Month Rank']]
-        return df
-    except Exception as e:
-        return pd.DataFrame()
 
 ticker_lists, cap_mapping, sector_mapping = get_nifty500_data()
 oi_data = get_fno_long_buildup()
@@ -439,21 +452,6 @@ if "results_df" in st.session_state:
         
     if "Above 200 DMA?" in top_n_df.columns:
         top_n_df = top_n_df.drop(columns=["Above 200 DMA?"])
-    
-    st.subheader("📊 Sector-wise Momentum Summary (True Index)")
-    st.markdown("Actual market-cap weighted momentum scores using official NSE Sector Indices.")
-    
-    sector_summary = get_official_sector_momentum()
-    
-    if not sector_summary.empty:
-        # Sort sector summary by the selected timeframe
-        rank_sort_col = sort_col.replace("Velocity (%)", "Rank")
-        if rank_sort_col in sector_summary.columns:
-            sector_summary = sector_summary.sort_values(by=rank_sort_col, ascending=True).reset_index(drop=True)
-        st.dataframe(sector_summary, use_container_width=True)
-    else:
-        st.warning("Could not fetch official sector index data.")
-    st.divider()
     
     st.subheader(f"🏆 Top {top_n} Ranked Momentum Portfolio")
     st.markdown(f"Found **{len(filtered_df)}** stocks above their 200 DMA. Displaying the **Top {top_n}** ranked by {ranking_timeframe}.")
